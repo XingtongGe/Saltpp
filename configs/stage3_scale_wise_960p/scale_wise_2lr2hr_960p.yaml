@@ -1,0 +1,189 @@
+# =============================================================================
+# Stage 3: Scale-Wise High-Resolution Post-Training (1664x960, 2LR + 2HR)
+# =============================================================================
+# Extends the 4-step causal generator to 1664x960 using 2 low-resolution (480p)
+# and 2 high-resolution (960p) generator calls per block (4 total calls), with
+# independent LR/HR KV caches and a causal x2 latent upsampler.
+#
+# Entrypoint: ltx_distillation.train_stage4_scale_wise
+# Launch:     bash scripts/train_stage3_scale_wise.sh configs/stage3_scale_wise_960p/scale_wise_2lr2hr_960p.yaml
+# =============================================================================
+
+# Model assets
+checkpoint_path: ./pretrained/LTX-2/ltx-2-19b-dev.safetensors
+gemma_path: ./pretrained/gemma-3-12b-it-qat-q4_0-unquantized
+text_encoder_checkpoint: ./pretrained/gemma-3-12b-it-qat-q4_0-unquantized
+spatial_upsampler_path: ./pretrained/LTX-2/ltx-2-spatial-upscaler-x2-1.0.safetensors
+causal_upsampler_checkpoint_path: ./pretrained/LTX-2/ltx-2-causal-upscaler-x2.pt
+causal_upsampler_history_frames: 18
+
+# Initialize from the Stage 2 480p rollout checkpoint
+generator_ckpt: ./outputs/stage2_step2_rollout_ar_dmd_4step/model.pt
+generator_ckpt_strict: false
+stage4_fake_score_checkpoint: ./outputs/stage2_step2_rollout_ar_dmd_4step/model.pt
+stage4_fake_score_checkpoint_strict: true
+resume_checkpoint: null
+stage1_ckpt_path: null
+stage1_ckpt_strict: false
+bidirectional_teacher_checkpoint: null
+bidirectional_teacher_strict: false
+
+# Model/task topology
+model_name: ltx2_av
+generator_grad: {model: true}
+real_score_grad: {model: false}
+fake_score_grad: {model: true}
+
+generator_task: causal_av
+real_task_type: bidirectional_av
+fake_task_type: bidirectional_av
+training_mode: causal_self_forcing
+use_causal_wrapper: true
+generator_use_causal_wrapper: true
+real_score_use_causal_wrapper: false
+fake_score_use_causal_wrapper: false
+alignment_rounding: round
+
+distillation_loss: stage4_scale_wise_dmd
+denoising_loss_type: velocity
+loss_target: velocity
+
+# 4-call scale-wise schedule: 2 LR calls (1000, 960) + causal upscale + 2 HR calls (889, 727)
+denoising_step_list: [1000, 960, 889, 727, 0]
+strict_denoising_sigmas: true
+num_train_timestep: 1000
+stage4_random_exit_rollout: true
+stage4_train_causal_upsampler: true
+
+# DMD weights
+real_video_guidance_scale: 3.0
+real_audio_guidance_scale: 5.0
+dmd_latent_mode: direct_noise
+stage4_lr_dmd_weight: 0.5
+stage4_hr_dmd_weight: 0.5
+video_loss_weight: 1.0
+audio_loss_weight: 0.16
+audio_start_step: 0
+block_weight_mode: uniform
+block_weight_min: 0.5
+
+# Causal architecture & KV cache
+num_frame_per_block: 3
+first_block_video_frames: 4
+num_audio_sink_tokens: 0
+enable_causal_log_rescale: false
+disable_causal_mask: false
+skip_cross_modal_attention: false
+enable_kv_cache: true
+context_noise: 0
+self_forcing_variant: two_pass
+same_step_across_blocks: true
+self_forcing_loss_scope: last_block
+self_forcing_min_generated_blocks: null
+self_forcing_max_generated_blocks: null
+
+# Training
+mixed_precision: true
+gradient_checkpointing: true
+batch_size: 1
+gradient_accumulation_steps: 1
+backward_simulation: true
+use_real_data: false
+variable_length_rollout: false
+dfake_gen_update_ratio: 5
+
+lr: 2.0e-05
+generator_lr: 2.0e-05
+critic_lr: 5.0e-05
+beta1: 0.9
+beta2: 0.999
+weight_decay: 0.01
+max_grad_norm: 10.0
+scheduler_type: cosine_warmup
+warmup_steps: 100
+max_steps: 20000
+min_lr: 1.0e-07
+
+# Metadata-only prompt stream
+dataset_type: frame_range
+data_config_path: ./configs/data/data_mixture_example.yaml
+oss_conf_path: null
+expand_tasks: false
+prompt_filter_remove_entity_tags: true
+prompt_filter_remove_speaker_span_tags: true
+prompt_filter_cleanup_spacing: true
+caption_priority:
+  - summary_with_audio_timestamp
+  - summary_with_audio_speaktime
+  - summary_with_audio
+  - caption
+part_key_priority:
+  - segments
+  - parts
+  - clips
+min_frames: 113
+max_frames: 193
+require_audio: true
+require_audio_flag: true
+audio_range_mode: segment
+max_entries_per_group: 0
+epoch_size: 0
+audio_sample_rate: 16000
+target_fps: 24
+data_timeout_sec: 120
+num_workers: 2
+preserve_aspect_ratio: true
+spatial_align: 32
+min_side: 128
+data_path: ./eval/prompts/rollout_prompts_example.jsonl
+
+negative_prompt: "blurry, out of focus, overexposed, underexposed, low contrast, excessive noise, poor lighting, flickering, motion blur, distorted proportions, unnatural skin tones, artifacts around text, inconsistent perspective, cartoonish rendering, uncanny valley effect, mismatched lip sync, silent or muted audio, distorted voice, off-sync audio, repetitive speech, jittery movement, unnatural transitions, flat lighting, stylized filters, or AI artifacts."
+
+# LR shape (480x832) -> HR decodes to 960x1664
+num_frames: 121
+video_height: 480
+video_width: 832
+
+# FSDP
+sharding_strategy: hybrid_full
+fsdp_backward_prefetch: none
+generator_fsdp_wrap_strategy: size
+real_score_fsdp_wrap_strategy: size
+fake_score_fsdp_wrap_strategy: size
+text_encoder_fsdp_wrap_strategy: size
+causal_upsampler_fsdp_wrap_strategy: size
+
+output_path: ./outputs/stage3_scale_wise_2lr2hr_960p
+log_iters: 400
+layerwise_grad_log_interval: 400
+local_visualization_iters: 25
+local_video_fps: 24
+wandb_project: Saltpp
+wandb_entity: ""
+wandb_name: stage3_scale_wise_2lr2hr_960p
+wandb_api_key: ""
+seed: 42
+no_save: false
+
+benchmark_enabled: true
+benchmark_iters: 400
+benchmark_seed: 12345
+benchmark_num_prompts: 48
+benchmark_prompt_files:
+  - ./eval/prompts/cinematic_shortshot16.prompts.txt
+  - ./eval/prompts/javis16_plus_sft_first_cutshot16.prompts.txt
+  - ./eval/prompts/youtube_av_dialogue16.prompts.txt
+benchmark_prompts_per_file: [16, 16, 16]
+benchmark_t2av_groups:
+  - {name: t2av_cinematic_shortshot, start: 0, end: 16}
+  - {name: t2av_javis_general, start: 16, end: 32}
+  - {name: t2av_youtube_dialogue, start: 32, end: 48}
+benchmark_duration_from_prompt_timestamps: false
+benchmark_min_frames: 121
+benchmark_max_frames: 121
+benchmark_video_fps: 24
+benchmark_audio_sample_rate: 24000
+benchmark_mode: causal
+benchmark_num_frame_per_block: 3
+benchmark_use_kv_cache: true
+benchmark_clear_cuda_cache_per_round: true

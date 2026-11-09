@@ -1,0 +1,160 @@
+# =============================================================================
+# Stage 1: Causal Self-Flow (CSF) AR Teacher Training (480p)
+# =============================================================================
+# Entrypoint: ltx_distillation.ar_teacher.train_ar_teacher_CausalSF
+# Launch:     bash scripts/train_stage1_csf_teacher.sh configs/stage1_csf_teacher/csf_ar_teacher_480p.yaml
+# =============================================================================
+
+# Model Paths (update to your local checkpoint paths)
+checkpoint_path: ./pretrained/LTX-2/ltx-2-19b-dev.safetensors
+bidirectional_model_checkpoint: null
+causal_model_checkpoint: null
+text_encoder_checkpoint: ./pretrained/gemma-3-12b-it-qat-q4_0-unquantized
+resume_checkpoint: null
+
+# Task Configuration
+training_mode: ar_teacher
+teacher_forcing: true
+enable_self_flow: false
+
+# Causal Self-Flow (CSF) Configuration
+enable_causal_self_flow: true
+csf_ctx_sigma_min: 0.0
+csf_ctx_sigma_max: 0.5
+csf_repr_weight: 0.05
+csf_clean_tf_ratio: 1.0
+csf_warmup_steps: 0
+csf_align_audio: true
+num_layers: 48
+csf_shallow_layer: 14
+csf_deep_layer: 34
+
+use_ema_teacher: true
+ema_decay: 0.99
+
+# Causal Architecture Settings
+num_frame_per_block: 3
+first_block_video_frames: 4
+num_audio_sink_tokens: 0
+enable_causal_log_rescale: false
+causal_mask_cache_max: 128
+
+noise_augmentation_max_sigma: 0.0
+first_frame_conditioning_p: 0.0
+
+# Flow matching timesteps & sigma schedule
+num_train_timestep: 1000
+sigma_shift: 8.0
+sigma_min: 0.003
+sigma_max: 1.0
+timestep_sampler_type: uniform_shifted
+timestep_sampler_std: 1.0
+timestep_sampler_uniform_prob: 0.1
+timestep_sampler_eps: 1e-3
+
+use_gaussian_weight: true
+video_loss_weight: 1.0
+audio_loss_weight: 0.16
+
+# Training Configuration
+mixed_precision: true
+gradient_checkpointing: true
+batch_size: 1
+lr: 1.0e-04
+lr_schedule_type: piecewise_constant
+lr_milestones: [6000]
+lr_values: [1.0e-04, 5.0e-05]
+beta1: 0.9
+beta2: 0.999
+weight_decay: 0.01
+max_grad_norm: 10.0
+gradient_accumulation_steps: 1
+warmup_steps: 100
+max_steps: 50000
+
+# Data Configuration
+oss_conf_path: null
+dataset_type: frame_range
+data_config_path: ./configs/data/data_mixture_example.yaml
+expand_tasks: false
+
+prompt_filter_remove_entity_tags: true
+prompt_filter_remove_speaker_span_tags: true
+prompt_filter_cleanup_spacing: true
+
+caption_priority:
+  - summary_with_audio_timestamp
+  - summary_with_audio_speaktime
+  - summary_with_audio
+  - caption
+
+part_key_priority:
+  - segments
+  - parts
+  - clips
+
+min_frames: 113
+max_frames: 193
+require_audio: true
+require_audio_flag: true
+audio_range_mode: segment
+max_entries_per_group: 0
+epoch_size: 0
+
+audio_sample_rate: 16000
+target_fps: 24
+data_timeout_sec: 120
+num_workers: 2
+preserve_aspect_ratio: true
+spatial_align: 32
+min_side: 128
+
+# Video/Audio Configuration
+num_frames: 121
+video_height: 480
+video_width: 832
+
+# FSDP Configuration
+sharding_strategy: hybrid_full
+generator_fsdp_wrap_strategy: size
+text_encoder_fsdp_wrap_strategy: size
+
+# Logging and Checkpointing
+output_path: ./outputs/stage1_csf_ar_teacher_480p
+log_iters: 800
+train_vis_iters: 25
+
+wandb_project: Saltpp
+wandb_entity: ""
+wandb_name: stage1_csf_ar_teacher_480p
+wandb_api_key: ""
+
+seed: 42
+no_save: false
+
+# Periodic Benchmark during Training
+benchmark_enabled: true
+benchmark_iters: 800
+benchmark_num_prompts: 48
+benchmark_prompt_files:
+  - ./eval/prompts/cinematic_shortshot16.prompts.txt
+  - ./eval/prompts/javis16_plus_sft_first_cutshot16.prompts.txt
+  - ./eval/prompts/youtube_av_dialogue16.prompts.txt
+benchmark_prompts_per_file: [16, 16, 16]
+benchmark_t2av_groups:
+  - {name: t2av_cinematic_shortshot, start: 0, end: 16}
+  - {name: t2av_javis_general, start: 16, end: 32}
+  - {name: t2av_youtube_dialogue, start: 32, end: 48}
+benchmark_num_inference_steps: 40
+benchmark_guidance_scale: 4.0
+benchmark_duration_from_prompt_timestamps: true
+benchmark_min_frames: 121
+benchmark_max_frames: 193
+benchmark_seed: 12345
+benchmark_video_fps: 24
+benchmark_audio_sample_rate: 24000
+benchmark_use_kv_cache: true
+benchmark_context_noise: 0
+benchmark_clear_cuda_cache_per_round: false
+benchmark_parallel_t2av_round_robin: true
+benchmark_ti2av_case_dirs: []

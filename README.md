@@ -52,9 +52,9 @@ directly.
 
 - [x] Paper on arXiv
 - [x] Project page with audio–video samples
-- [ ] Inference scripts
+- [x] Inference scripts
 - [ ] Open-source model weights
-- [ ] Training scripts
+- [x] Training scripts
 
 Stay tuned 🚀
 
@@ -83,6 +83,178 @@ rollout:
 asymmetry in causal histories for self-supervised representation learning.
 **(b)** Mismatched (top) and aligned (bottom) contexts across the generator,
 real score, and fake score.*
+
+---
+
+## 🛠️ Installation & Base Models
+
+### 1. Environment Setup
+
+We recommend Python >= 3.10 and PyTorch >= 2.2 (tested with PyTorch `2.9.1+cu128` for FlexAttention support). You can install the workspace using `uv` or `pip`:
+
+```bash
+git clone https://github.com/XingtongGe/Saltpp.git
+cd Saltpp
+
+# Option A: uv workspace
+uv sync
+source .venv/bin/activate
+
+# Option B: editable pip install
+pip install -e packages/ltx-core
+pip install -e packages/ltx-pipelines
+pip install -e packages/ltx-causal
+pip install -e packages/ltx-distillation
+```
+
+All scripts under `scripts/` also configure `PYTHONPATH` automatically from the repository root.
+
+### 2. Pretrained Base Weights
+
+Download the base foundation weights and place them under `./pretrained/` (or update the paths in `configs/`):
+
+| Component | Source | Default Local Path |
+|:--|:--|:--|
+| **LTX-2 19B Base** | [`Lightricks/LTX-2`](https://huggingface.co/Lightricks/LTX-2) (`ltx-2-19b-dev.safetensors`) | `./pretrained/LTX-2/ltx-2-19b-dev.safetensors` |
+| **LTX-2 Spatial Upscaler** *(for 960p)* | [`Lightricks/LTX-2`](https://huggingface.co/Lightricks/LTX-2) (`ltx-2-spatial-upscaler-x2-1.0.safetensors`) | `./pretrained/LTX-2/ltx-2-spatial-upscaler-x2-1.0.safetensors` |
+| **Gemma-3 12B Text Encoder** | [`google/gemma-3-12b-it-qat-q4_0-unquantized`](https://huggingface.co/google/gemma-3-12b-it-qat-q4_0-unquantized) | `./pretrained/gemma-3-12b-it-qat-q4_0-unquantized` |
+
+---
+
+## 🚀 Quick Start: Inference
+
+Released Salt++ checkpoints are provided in a lightweight `generator_only.pt` format (`{"generator": state_dict, "step": int}`), while full training checkpoints (`model.pt`) are also supported directly.
+
+### 1. 4-Step Streaming Audio–Video Generation (480p)
+
+```bash
+# Single prompt demo
+python scripts/infer_480p.py \
+  --config configs/stage2_context_aligned_dmd/step2_rollout_ar_dmd_4step.yaml \
+  --checkpoint ./checkpoints/saltpp_480p/generator_only.pt \
+  --direct-generator-checkpoint-load \
+  --denoising-update consistency \
+  --denoising-step-list 1000,960,889,727,0 \
+  --guidance-scale 1.0 \
+  --prompt "A close-up of a guitarist strumming an acoustic guitar and singing warmly in a sunlit studio." \
+  --output-dir ./outputs/demo_480p
+```
+
+### 2. 4-Step Scale-Wise High-Resolution Generation (1664×960, `2LR + 2HR`)
+
+```bash
+python scripts/infer_960p_scale_wise.py \
+  --config configs/stage3_scale_wise_960p/scale_wise_2lr2hr_960p.yaml \
+  --checkpoint ./checkpoints/saltpp_960p/generator_only.pt \
+  --prompt "A close-up of a guitarist strumming an acoustic guitar and singing warmly in a sunlit studio." \
+  --output-dir ./outputs/demo_960p
+```
+
+### 3. Multi-Step AR Teacher Inference (Stage 1 CSF, 40 steps)
+
+```bash
+python scripts/infer_480p.py \
+  --config configs/stage1_csf_teacher/csf_ar_teacher_480p.yaml \
+  --checkpoint ./checkpoints/stage1_csf_teacher/generator_only.pt \
+  --direct-generator-checkpoint-load \
+  --denoising-update euler \
+  --num-inference-steps 40 \
+  --guidance-scale 4.0 \
+  --prompt "A close-up of a guitarist strumming an acoustic guitar and singing warmly in a sunlit studio." \
+  --output-dir ./outputs/demo_teacher_480p
+```
+
+See [`eval/README.md`](eval/README.md) for batch generation and evaluation on **JavisBench-mini** and **VBench**.
+
+---
+
+## 🏋️ Post-Training Pipeline
+
+All training scripts launch via `torchrun` and read standard distributed environment variables (`NPROC_PER_NODE`, `NNODES`, `NODE_RANK`, `MASTER_ADDR`, `MASTER_PORT`). Before launching, update the checkpoint and dataset paths in the corresponding YAML config under `configs/`.
+
+### Stage 1: Causal Self-Flow (CSF) AR Teacher
+
+Trains the multi-step causal autoregressive teacher from bidirectional LTX-2 using teacher forcing and CSF representation alignment:
+
+```bash
+bash scripts/train_stage1_csf_teacher.sh \
+  configs/stage1_csf_teacher/csf_ar_teacher_480p.yaml
+```
+
+### Stage 2: Context-Aligned AR DMD (480p)
+
+1. **Step 1 — Clean-Prefix Context-Aligned AR DMD**: Distills the Stage 1 AR teacher into a few-step causal generator using matched causal AR real and fake scores under clean historical prefixes:
+   ```bash
+   bash scripts/train_stage2_clean_dmd.sh \
+     configs/stage2_context_aligned_dmd/step1_clean_prefix_ar_dmd.yaml
+   ```
+   *(For the TF-dCM ablation route, run `bash scripts/train_stage2_clean_tf_dcm.sh configs/stage2_context_aligned_dmd/step1_clean_prefix_tf_dcm.yaml`.)*
+
+2. **Step 2 — On-Policy Rollout Context-Aligned AR DMD**: Adapts the generator to its own generated KV-cache histories with 4-step random-exit self-forcing rollouts:
+   ```bash
+   bash scripts/train_stage2_rollout_dmd.sh \
+     configs/stage2_context_aligned_dmd/step2_rollout_ar_dmd_4step.yaml
+   ```
+
+### Stage 3: Scale-Wise High-Resolution Post-Training (1664×960)
+
+1. **Step 1 — Scale-Wise 2LR + 2HR DMD**: Extends the 4-step causal generator to `2LR + 2HR` (two 480p calls + causal latent upsampling + two 960p calls per block) with separate LR and HR KV caches:
+   ```bash
+   bash scripts/train_stage3_scale_wise.sh \
+     configs/stage3_scale_wise_960p/scale_wise_2lr2hr_960p.yaml
+   ```
+
+2. **Step 2 (Exploratory) — Refiner-Guided Reference DPO**: Aligns the high-resolution denoising nodes (`{889, 727}`) with preference pairs constructed from the frozen `2LR + 2HR` reference policy and the bidirectional LTX-2 refiner, without adding the refiner to the deployment graph:
+   ```bash
+   bash scripts/train_stage3_reference_dpo.sh \
+     configs/stage3_scale_wise_960p/scale_wise_anchored_reference_dpo_960p.yaml
+   ```
+   > **Note on Refiner-Guided DPO:** This stage is an exploratory attempt aimed at distilling the super-resolution prior of the bidirectional LTX-2 refiner into our causal student. Because its training dynamics remained relatively sensitive and unstable on LTX-2, **the final results reported in our paper do not include this DPO stage** (using Step 1 Scale-Wise DMD directly). Nevertheless, we release our full implementation here, as we believe preference-based high-resolution refinement remains a promising direction when paired with stronger and more stable base models (e.g., MiniMax-H3).
+
+### Exporting Lightweight Checkpoints
+
+Full training checkpoints (`model.pt`, ~72–76 GB) include score networks and optimizer states. To export a standalone `generator_only.pt` for inference:
+
+```bash
+python scripts/export_generator_ckpt.py \
+  --source ./outputs/stage2_step2_rollout_ar_dmd_4step/model.pt \
+  --output ./checkpoints/saltpp_480p/generator_only.pt
+```
+
+---
+
+## 📂 Repository Structure
+
+```text
+Saltpp/
+├── configs/
+│   ├── data/                           # Example data mixture config
+│   ├── stage1_csf_teacher/             # Stage 1: Causal Self-Flow (CSF) AR Teacher
+│   ├── stage2_context_aligned_dmd/     # Stage 2: Clean-prefix & Rollout Context-Aligned AR DMD
+│   └── stage3_scale_wise_960p/         # Stage 3: 1664x960 (2LR + 2HR) Scale-Wise Post-Training
+├── scripts/
+│   ├── infer_480p.py                   # 480p causal audio-video inference (T2AV & TI2AV)
+│   ├── infer_960p_scale_wise.py        # 1664x960 scale-wise (2LR + 2HR) inference
+│   ├── export_generator_ckpt.py        # Export generator_only.pt from training checkpoints
+│   ├── train_stage1_csf_teacher.sh     # Stage 1 training launcher
+│   ├── train_stage2_clean_dmd.sh       # Stage 2 (Step 1) clean-prefix AR DMD launcher
+│   ├── train_stage2_rollout_dmd.sh     # Stage 2 (Step 2) rollout AR DMD launcher
+│   ├── train_stage3_scale_wise.sh      # Stage 3 (Step 1) scale-wise 960p DMD launcher
+│   └── train_stage3_reference_dpo.sh   # Stage 3 (Step 2) refiner-guided reference DPO launcher
+├── packages/
+│   ├── ltx-core/                       # Base LTX-2 model components, VAE, and Gemma text encoder
+│   ├── ltx-pipelines/                  # Base LTX-2 pipeline utilities
+│   ├── ltx-causal/                     # Causal FlexAttention masks, AV block layout, KV cache, RoPE
+│   ├── ltx-distillation/               # Salt++ training objectives (CSF, AR DMD, Scale-Wise DMD)
+│   └── dataset/                        # Audio-video frame-range dataset and dynamic aspect-ratio loader
+└── eval/
+    ├── README.md                       # JavisBench-mini & VBench evaluation guide
+    ├── EXTERNAL_DEPENDENCIES.json      # Reference model & benchmark dependency manifest
+    ├── evaluate_vbench_video_metrics.py
+    └── prompts/                        # JavisBench-mini and validation prompt sets
+```
+
+---
 
 ## 📈 Results
 

@@ -1,0 +1,31 @@
+# =============================================================================
+# Stage 2 (Step 2 Ablation): Rollout DMD Initialized from TF-dCM
+# =============================================================================
+# Entrypoint: ltx_distillation.train_distillation
+# Launch:     bash scripts/train_stage2_rollout_dmd.sh configs/stage2_context_aligned_dmd/step2_rollout_from_tfdcm_4step.yaml
+# =============================================================================
+
+base_config_path: step2_rollout_base.yaml
+
+generator_ckpt: ./outputs/stage2_step1_clean_prefix_tf_dcm/model.pt
+generator_checkpoint_state_key: generator
+
+real_score_init_checkpoint: null
+real_score_init_state_key: null
+fake_score_init_checkpoint: null
+fake_score_init_state_key: null
+real_task_type: bidirectional_av
+fake_task_type: bidirectional_av
+real_score_use_causal_wrapper: false
+fake_score_use_causal_wrapper: false
+distillation_loss: dmd
+
+real_video_guidance_scale: 3.0
+real_video_guidance_scale_min: 3.0
+real_video_guidance_scale_max: 3.0
+real_audio_guidance_scale: 3.0
+real_audio_guidance_scale_min: 3.0
+real_audio_guidance_scale_max: 3.0
+
+output_path: ./outputs/stage2_step2_rollout_from_tfdcm_4step
+wandb_name: stage2_step2_rollout_from_tfdcm_4step

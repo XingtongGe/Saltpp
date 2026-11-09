@@ -1,0 +1,179 @@
+# =============================================================================
+# Stage 2 (Step 1 Ablation): Clean-Prefix Bidirectional-Score DMD (Bi-real / Bi-fake)
+# =============================================================================
+# Entrypoint: ltx_distillation.train_stage2
+# =============================================================================
+
+checkpoint_path: ./pretrained/LTX-2/ltx-2-19b-dev.safetensors
+gemma_path: ./pretrained/gemma-3-12b-it-qat-q4_0-unquantized
+bidirectional_model_checkpoint: null
+causal_model_checkpoint: null
+text_encoder_checkpoint: ./pretrained/gemma-3-12b-it-qat-q4_0-unquantized
+
+generator_ckpt: ./outputs/stage1_csf_ar_teacher_480p/model.pt
+resume_checkpoint: null
+
+debug_skip_stage0_generator_load: false
+debug_skip_score_weight_load: false
+
+training_mode: causal_tf_dmd
+score_ablation_setting: bi_real_bi_fake
+teacher_forcing: true
+
+generator_task_type: causal_av
+real_task_type: bidirectional_av
+fake_task_type: bidirectional_av
+
+generator_use_causal_wrapper: true
+real_score_use_causal_wrapper: false
+fake_score_use_causal_wrapper: false
+
+generator_grad: {model: true}
+real_score_grad: {model: false}
+fake_score_grad: {model: true}
+
+num_frame_per_block: 3
+first_block_video_frames: 4
+num_audio_sink_tokens: 0
+enable_causal_log_rescale: false
+enable_chunk_recycling: false
+first_frame_conditioning_p: 0.0
+
+num_train_timestep: 1000
+sigma_shift: 8.0
+sigma_min: 0.003
+sigma_max: 1.0
+timestep_sampler_type: uniform_shifted
+timestep_sampler_std: 1.0
+timestep_sampler_uniform_prob: 0.1
+timestep_sampler_eps: 1.0e-3
+
+use_gaussian_weight: false
+noise_augmentation_max_sigma: 0.0
+video_loss_weight: 1.0
+audio_loss_weight: 0.16
+
+denoising_step_list: [1000, 982, 960, 930, 889, 828, 727, 533, 0]
+strict_denoising_sigmas: true
+
+dmd_timestep_sampler_type: uniform_shifted
+dmd_sigma_shift: 8.0
+dmd_sigma_min: 0.02
+dmd_sigma_max: 0.98
+dmd_sigma_bounds_space: shifted
+fake_score_timestep_sampler_type: uniform_shifted
+fake_score_sigma_shift: 8.0
+fake_score_sigma_min: 0.02
+fake_score_sigma_max: 0.98
+fake_score_sigma_bounds_space: shifted
+
+real_video_guidance_scale: 2.75
+real_video_guidance_scale_min: 2.0
+real_video_guidance_scale_max: 3.5
+real_audio_guidance_scale: 5.0
+dfake_gen_update_ratio: 5
+dmd_latent_mode: direct_noise
+audio_start_step: 0
+block_weight_mode: uniform
+block_weight_min: 0.5
+denoising_loss_type: velocity
+
+svi_enabled: false
+
+mixed_precision: true
+gradient_checkpointing: true
+batch_size: 1
+gradient_accumulation_steps: 1
+
+lr: 2.0e-05
+generator_lr: 2.0e-05
+critic_lr: 5.0e-05
+beta1: 0.9
+beta2: 0.999
+weight_decay: 0.01
+max_grad_norm: 1.0
+warmup_steps: 100
+max_steps: 30000
+
+oss_conf_path: null
+dataset_type: frame_range
+data_config_path: ./configs/data/data_mixture_example.yaml
+expand_tasks: false
+
+prompt_filter_remove_entity_tags: true
+prompt_filter_remove_speaker_span_tags: true
+prompt_filter_cleanup_spacing: true
+caption_priority:
+  - summary_with_audio_timestamp
+  - summary_with_audio_speaktime
+  - summary_with_audio
+  - caption
+part_key_priority:
+  - segments
+  - parts
+  - clips
+
+min_frames: 113
+max_frames: 193
+require_audio: true
+require_audio_flag: true
+audio_range_mode: segment
+max_entries_per_group: 0
+epoch_size: 0
+
+audio_sample_rate: 16000
+target_fps: 24
+data_timeout_sec: 120
+num_workers: 2
+preserve_aspect_ratio: true
+spatial_align: 32
+min_side: 128
+
+num_frames: 121
+video_height: 480
+video_width: 832
+
+negative_prompt: "blurry, out of focus, overexposed, underexposed, low contrast, excessive noise, poor lighting, flickering, motion blur, distorted proportions, unnatural skin tones, artifacts around text, inconsistent perspective, cartoonish rendering, uncanny valley effect, mismatched lip sync, silent or muted audio, distorted voice, off-sync audio, repetitive speech, jittery movement, unnatural transitions, flat lighting, stylized filters, or AI artifacts."
+
+sharding_strategy: hybrid_full
+generator_fsdp_wrap_strategy: size
+text_encoder_fsdp_wrap_strategy: size
+real_score_fsdp_wrap_strategy: size
+fake_score_fsdp_wrap_strategy: size
+
+output_path: ./outputs/stage2_step1_clean_prefix_bi_dmd
+log_iters: 800
+local_visualization_iters: 25
+local_video_fps: 24
+
+wandb_project: Saltpp
+wandb_entity: ""
+wandb_name: stage2_step1_clean_prefix_bi_dmd
+wandb_api_key: ""
+
+benchmark_enabled: true
+benchmark_sampler: consistency
+benchmark_iters: 400
+benchmark_seed: 12345
+benchmark_num_prompts: 48
+benchmark_denoising_step_lists:
+  - [1000, 960, 889, 727, 0]
+  - [1000, 982, 960, 930, 889, 828, 727, 533, 0]
+benchmark_prompt_files:
+  - ./eval/prompts/cinematic_shortshot16.prompts.txt
+  - ./eval/prompts/javis16_plus_sft_first_cutshot16.prompts.txt
+  - ./eval/prompts/youtube_av_dialogue16.prompts.txt
+benchmark_prompts_per_file: [16, 16, 16]
+benchmark_t2av_groups:
+  - {name: t2av_cinematic_shortshot, start: 0, end: 16}
+  - {name: t2av_javis_general, start: 16, end: 32}
+  - {name: t2av_youtube_dialogue, start: 32, end: 48}
+benchmark_duration_from_prompt_timestamps: true
+benchmark_min_frames: 121
+benchmark_max_frames: 193
+benchmark_video_fps: 24
+benchmark_audio_sample_rate: 24000
+benchmark_clear_cuda_cache_per_round: false
+
+seed: 42
+no_save: false

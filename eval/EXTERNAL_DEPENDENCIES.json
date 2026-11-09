@@ -1,0 +1,24 @@
+{
+  "ltx2": {
+    "source": "https://huggingface.co/Lightricks/LTX-2",
+    "code": "https://github.com/Lightricks/LTX-2",
+    "required_files": [
+      "ltx-2-19b-dev.safetensors",
+      "ltx-2-19b-distilled-lora-384.safetensors (official 960p baseline)",
+      "ltx-2-spatial-upscaler-x2-1.0.safetensors (scale-wise 960p stage)"
+    ]
+  },
+  "gemma3_12b": {
+    "model_id": "google/gemma-3-12b-it-qat-q4_0-unquantized",
+    "source": "https://huggingface.co/google/gemma-3-12b-it-qat-q4_0-unquantized",
+    "revision": "68f7ee4fbd59087436ada77ed2d62f373fdd4482"
+  },
+  "javisbench": {
+    "dataset": "https://huggingface.co/datasets/JavisDiT/JavisBench",
+    "code": "https://github.com/JavisVerse/JavisDiT"
+  },
+  "vbench": {
+    "code": "https://github.com/Vchitect/VBench",
+    "weights": "https://huggingface.co/OpenGVLab/VBench_Used_Models"
+  }
+}

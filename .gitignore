@@ -1,0 +1,79 @@
+# Python-generated files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+wheels/
+*.egg-info/
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+.python-version
+
+# IDE & OS
+.idea/
+.vscode/
+.DS_Store
+._*
+*.swp
+*.swo
+*~
+
+# Model checkpoints & weights
+*.ckpt
+*.pt
+*.pth
+*.safetensors
+*.sft
+*.bin
+*.onnx
+checkpoints/
+weights/
+pretrained/
+
+# Data & cache
+*.lmdb
+*.mdb
+*.h5
+*.hdf5
+*.npy
+*.npz
+*.parquet
+/data/
+/datasets/
+.cache/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+tmp/
+temp/
+
+# Outputs, logs & monitoring
+outputs/
+output/
+results/
+samples/
+generated/
+logs/
+*.log
+wandb/
+.wandb/
+.wandb_cache/
+.wandb_config/
+runs/
+
+# Generated media (keep README assets tracked)
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+*.wav
+*.mp3
+*.flac
+!assets/**

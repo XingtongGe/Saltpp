@@ -1,0 +1,192 @@
+# =============================================================================
+# Stage 2 (Step 2 Base): On-Policy Rollout Self-Forcing DMD (4-Step)
+# =============================================================================
+# Shared base configuration for Stage 2 Step 2 rollout training.
+# =============================================================================
+
+checkpoint_path: ./pretrained/LTX-2/ltx-2-19b-dev.safetensors
+gemma_path: ./pretrained/gemma-3-12b-it-qat-q4_0-unquantized
+text_encoder_checkpoint: ./pretrained/gemma-3-12b-it-qat-q4_0-unquantized
+
+resume_checkpoint: null
+stage1_ckpt_path: null
+generator_ckpt: ./outputs/stage2_step1_clean_prefix_ar_dmd/model.pt
+generator_ckpt_strict: false
+generator_checkpoint_state_key: generator
+bootstrap_bidirectional_ckpt_path: null
+stage1_ckpt_strict: false
+
+bidirectional_teacher_checkpoint: null
+bidirectional_teacher_strict: false
+
+model_name: ltx2_av
+
+generator_grad: {model: true}
+real_score_grad: {model: false}
+fake_score_grad: {model: true}
+
+generator_task: causal_av
+real_task_type: bidirectional_av
+fake_task_type: bidirectional_av
+training_mode: causal_self_forcing
+use_causal_wrapper: true
+generator_use_causal_wrapper: true
+real_score_use_causal_wrapper: false
+fake_score_use_causal_wrapper: false
+alignment_rounding: round
+
+distillation_loss: dmd
+denoising_loss_type: velocity
+
+# 4-step deployment schedule
+denoising_step_list: [1000, 960, 889, 727, 0]
+strict_denoising_sigmas: true
+same_step_across_blocks: true
+fake_score_rollout_mode: random_exit
+
+num_train_timestep: 1000
+dmd_timestep_sampler_type: uniform_shifted
+dmd_sigma_shift: 8.0
+dmd_sigma_min: 0.02
+dmd_sigma_max: 0.98
+dmd_sigma_bounds_space: shifted
+fake_score_timestep_sampler_type: uniform_shifted
+fake_score_sigma_shift: 8.0
+fake_score_sigma_min: 0.02
+fake_score_sigma_max: 0.98
+fake_score_sigma_bounds_space: shifted
+
+real_video_guidance_scale: 2.25
+real_video_guidance_scale_min: 1.0
+real_video_guidance_scale_max: 3.5
+real_audio_guidance_scale: 5.0
+dmd_latent_mode: direct_noise
+backward_simulation: true
+dfake_gen_update_ratio: 5
+
+# Causal architecture (must match Stage 1 & Stage 2 Step 1)
+num_frame_per_block: 3
+first_block_video_frames: 4
+num_audio_sink_tokens: 0
+enable_causal_log_rescale: false
+disable_causal_mask: false
+skip_cross_modal_attention: false
+loss_target: velocity
+
+# Self-forcing rollout configuration
+enable_kv_cache: true
+context_noise: 0
+self_forcing_variant: two_pass
+self_forcing_loss_scope: last_block
+variable_length_rollout: true
+self_forcing_min_generated_blocks: null
+self_forcing_max_generated_blocks: null
+
+video_loss_weight: 1.0
+audio_loss_weight: 0.16
+audio_start_step: 0
+block_weight_mode: uniform
+block_weight_min: 0.5
+
+mixed_precision: true
+gradient_checkpointing: true
+batch_size: 1
+gradient_accumulation_steps: 2
+
+lr: 2.0e-05
+generator_lr: 2.0e-05
+critic_lr: 5.0e-05
+beta1: 0.9
+beta2: 0.999
+weight_decay: 0.01
+max_grad_norm: 10.0
+
+scheduler_type: cosine_warmup
+warmup_steps: 100
+max_steps: 20000
+min_lr: 1.0e-07
+
+# Prompt-only / metadata-only stream (or set use_metadata_prompt_data: false and data_path: ./eval/prompts/...)
+use_real_data: false
+use_metadata_prompt_data: true
+dataset_type: frame_range
+data_config_path: ./configs/data/data_mixture_example.yaml
+oss_conf_path: null
+expand_tasks: false
+prompt_filter_remove_entity_tags: true
+prompt_filter_remove_speaker_span_tags: true
+prompt_filter_cleanup_spacing: true
+caption_priority:
+  - summary_with_audio_timestamp
+  - summary_with_audio_speaktime
+  - summary_with_audio
+  - caption
+part_key_priority:
+  - segments
+  - parts
+  - clips
+min_frames: 113
+max_frames: 193
+require_audio: true
+require_audio_flag: true
+audio_range_mode: segment
+max_entries_per_group: 0
+epoch_size: 0
+audio_sample_rate: 16000
+target_fps: 24
+data_timeout_sec: 120
+num_workers: 2
+preserve_aspect_ratio: true
+spatial_align: 32
+min_side: 128
+data_path: null
+
+negative_prompt: "blurry, out of focus, overexposed, underexposed, low contrast, excessive noise, poor lighting, flickering, motion blur, distorted proportions, unnatural skin tones, artifacts around text, inconsistent perspective, cartoonish rendering, uncanny valley effect, mismatched lip sync, silent or muted audio, distorted voice, off-sync audio, repetitive speech, jittery movement, unnatural transitions, flat lighting, stylized filters, or AI artifacts."
+
+num_frames: 121
+video_height: 480
+video_width: 832
+
+sharding_strategy: hybrid_full
+fsdp_backward_prefetch: none
+generator_fsdp_wrap_strategy: size
+real_score_fsdp_wrap_strategy: size
+fake_score_fsdp_wrap_strategy: size
+text_encoder_fsdp_wrap_strategy: size
+
+output_path: ./outputs/stage2_step2_rollout_base
+log_iters: 400
+
+wandb_project: Saltpp
+wandb_entity: ""
+wandb_name: stage2_step2_rollout_base
+wandb_api_key: ""
+
+seed: 42
+no_save: false
+
+benchmark_enabled: true
+benchmark_iters: 400
+benchmark_seed: 12345
+benchmark_num_prompts: 48
+benchmark_denoising_step_lists:
+  - [1000, 960, 889, 727, 0]
+  - [1000, 982, 960, 930, 889, 828, 727, 533, 0]
+benchmark_prompt_files:
+  - ./eval/prompts/cinematic_shortshot16.prompts.txt
+  - ./eval/prompts/javis16_plus_sft_first_cutshot16.prompts.txt
+  - ./eval/prompts/youtube_av_dialogue16.prompts.txt
+benchmark_prompts_per_file: [16, 16, 16]
+benchmark_t2av_groups:
+  - {name: t2av_cinematic_shortshot, start: 0, end: 16}
+  - {name: t2av_javis_general, start: 16, end: 32}
+  - {name: t2av_youtube_dialogue, start: 32, end: 48}
+benchmark_duration_from_prompt_timestamps: true
+benchmark_min_frames: 121
+benchmark_max_frames: 193
+benchmark_video_fps: 24
+benchmark_audio_sample_rate: 24000
+benchmark_mode: causal
+benchmark_num_frame_per_block: 3
+benchmark_use_kv_cache: true
+benchmark_clear_cuda_cache_per_round: false

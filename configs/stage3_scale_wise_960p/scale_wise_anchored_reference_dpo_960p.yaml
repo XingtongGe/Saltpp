@@ -1,0 +1,175 @@
+# =============================================================================
+# Stage 3 (Step 2 Exploratory): Refiner-Guided Anchored Reference DPO (1664x960)
+# =============================================================================
+# NOTE: This stage is an exploratory attempt to distill the super-resolution
+# prior of the LTX-2 bidirectional refiner into the causal student. Due to
+# training instability on LTX-2, the final results in the Salt++ paper do not
+# adopt this stage. We include the implementation as a reference for future
+# exploration on stronger and more stable base models (e.g., MiniMax-H3).
+# Pair:
+#   negative       = frozen Stage 3 (2LR + 2HR) rollout
+#   refined        = official bidirectional refiner(negative)
+#   positive_video = negative + 0.5 * (refined - negative)
+#   positive_audio = negative_audio
+# Objective:
+#   reference-normalized video DPO
+#   + 0.20 * negative video denoising energy
+#   + 0.05 * negative audio denoising energy
+#
+# Entrypoint: ltx_distillation.train_stage4_reference_dpo
+# Launch:     bash scripts/train_stage3_reference_dpo.sh configs/stage3_scale_wise_960p/scale_wise_anchored_reference_dpo_960p.yaml
+# =============================================================================
+
+training_mode: stage4_reference_dpo
+
+# Model assets
+checkpoint_path: ./pretrained/LTX-2/ltx-2-19b-dev.safetensors
+gemma_path: ./pretrained/gemma-3-12b-it-qat-q4_0-unquantized
+text_encoder_checkpoint: ./pretrained/gemma-3-12b-it-qat-q4_0-unquantized
+spatial_upsampler_path: ./pretrained/LTX-2/ltx-2-spatial-upscaler-x2-1.0.safetensors
+refiner_lora_path: ./pretrained/LTX-2/ltx-2-19b-distilled-lora-384.safetensors
+refiner_lora_strength: 1.0
+
+# Policy and frozen reference start from the exact same Stage 3 (2LR + 2HR) checkpoint
+policy_init_checkpoint: ./outputs/stage3_scale_wise_2lr2hr_960p/model.pt
+reference_checkpoint: null
+policy_use_ema: false
+reference_use_ema: false
+resume_checkpoint: null
+
+# Restore the causal upsampler embedded in the Stage 3 checkpoint
+causal_upsampler_checkpoint_path: ./pretrained/LTX-2/ltx-2-causal-upscaler-x2.pt
+causal_upsampler_state_checkpoint: ./outputs/stage3_scale_wise_2lr2hr_960p/model.pt
+causal_upsampler_history_frames: 18
+train_causal_upsampler: false
+save_causal_upsampler: true
+
+# Fixed deployment graph
+denoising_step_list: [1000, 960, 889, 727, 0]
+num_train_timestep: 1000
+num_frame_per_block: 3
+first_block_video_frames: 4
+num_audio_sink_tokens: 0
+enable_causal_log_rescale: false
+enable_chunk_recycling: false
+
+# Official refiner produces a teacher target; preference pair blends 0.5 toward
+# the refined video and retains the original causal audio.
+refiner_sigmas: [0.909375, 0.725, 0.421875, 0.0]
+positive_video_mix: 0.5
+positive_audio_source: negative
+
+# Anchored reference preference objective
+dpo_pair_source: frozen_reference
+dpo_timestep_candidates: [889, 727]
+dpo_beta: 0.3
+dpo_loss_weight: 1.0
+dpo_video_weight: 1.0
+dpo_audio_weight: 0.0
+negative_video_anchor_weight: 0.20
+negative_audio_anchor_weight: 0.05
+dpo_replay_error_tolerance: 5.0e-4
+
+# Optimization
+mixed_precision: true
+gradient_checkpointing: true
+batch_size: 1
+gradient_accumulation_steps: 1
+generator_lr: 2.0e-06
+beta1: 0.9
+beta2: 0.999
+adam_eps: 1.0e-08
+weight_decay: 0.0
+max_grad_norm: 1.0
+warmup_steps: 50
+min_lr: 1.0e-07
+max_steps: 300
+
+# Stability guard
+stability_guard_enabled: true
+stability_guard_ema_decay: 0.9
+stability_guard_min_steps: 25
+stability_guard_patience: 3
+stability_guard_max_negative_reference_ratio: 2.0
+stability_guard_max_preference_probability: 0.8
+stability_guard_max_grad_norm: 5.0
+
+# Prompt source: metadata or local_files
+stage35_prompt_source: metadata
+stage35_local_prompt_files:
+  - ./eval/prompts/JavisBench-mini.prompts.txt
+stage35_local_prompt_epoch_size: 12000
+
+dataset_type: frame_range
+data_config_path: ./configs/data/data_mixture_example.yaml
+oss_conf_path: null
+expand_tasks: false
+prompt_filter_remove_entity_tags: true
+prompt_filter_remove_speaker_span_tags: true
+prompt_filter_cleanup_spacing: true
+caption_priority:
+  - summary_with_audio_timestamp
+  - summary_with_audio_speaktime
+  - summary_with_audio
+  - caption
+part_key_priority:
+  - segments
+  - parts
+  - clips
+min_frames: 113
+max_frames: 193
+require_audio: true
+require_audio_flag: true
+audio_range_mode: segment
+max_entries_per_group: 0
+epoch_size: 0
+audio_sample_rate: 16000
+target_fps: 24
+data_timeout_sec: 120
+num_workers: 2
+preserve_aspect_ratio: true
+spatial_align: 32
+min_side: 128
+
+variable_length_rollout: false
+num_frames: 121
+video_height: 480
+video_width: 832
+
+# FSDP
+sharding_strategy: hybrid_full
+policy_fsdp_wrap_strategy: size
+reference_fsdp_wrap_strategy: size
+official_refiner_fsdp_wrap_strategy: size
+causal_upsampler_fsdp_wrap_strategy: size
+text_encoder_fsdp_wrap_strategy: size
+
+output_path: ./outputs/stage3_scale_wise_anchored_reference_dpo_960p
+local_visualization_iters: 25
+local_video_fps: 24
+checkpoint_iters: 25
+no_save: false
+
+benchmark_enabled: true
+benchmark_at_start: true
+benchmark_iters: 50
+benchmark_seed: 12345
+benchmark_num_frames: 121
+benchmark_num_prompts: 48
+benchmark_prompt_files:
+  - ./eval/prompts/cinematic_shortshot16.prompts.txt
+  - ./eval/prompts/javis16_plus_sft_first_cutshot16.prompts.txt
+  - ./eval/prompts/youtube_av_dialogue16.prompts.txt
+benchmark_prompts_per_file: [16, 16, 16]
+benchmark_t2av_groups:
+  - {name: t2av_cinematic_shortshot, start: 0, end: 16}
+  - {name: t2av_javis_general, start: 16, end: 32}
+  - {name: t2av_youtube_dialogue, start: 32, end: 48}
+benchmark_video_fps: 24
+benchmark_audio_sample_rate: 24000
+
+wandb_project: Saltpp
+wandb_entity: ""
+wandb_name: stage3_scale_wise_anchored_reference_dpo_960p
+wandb_api_key: ""
+seed: 42

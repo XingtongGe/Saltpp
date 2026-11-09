@@ -1,0 +1,63 @@
+# Example data mixture configuration (1:1 single-shot mixture).
+# Update json_list_path / size_list_path / index_list_path / oss_file_path
+# to match your local or cluster storage layout.
+data:
+  ratio:
+  - 1
+  - 1
+  dataset:
+  - params:
+      tasks:
+      - task_size: 1
+        sub_batch_size: 1
+        task_training: i2v
+        task_type: video_varlen
+        json_list_path:
+        - ./data/singleshot_split_a/data_0.txt
+        size_list_path:
+        - ./data/singleshot_split_a/size_0.txt
+        index_list_path:
+        - ./data/singleshot_split_a/index_0.txt
+  - params:
+      tasks:
+      - task_size: 1
+        sub_batch_size: 1
+        task_training: i2v
+        task_type: video_varlen
+        json_list_path:
+        - ./data/singleshot_split_b/data_0.txt
+        size_list_path:
+        - ./data/singleshot_split_b/size_0.txt
+        index_list_path:
+        - ./data/singleshot_split_b/index_0.txt
+        audio_flag_list_path:
+        - ./data/singleshot_split_b/sound_0.txt
+  share_params:
+    data_balance: true
+    data_balance_workers: 32
+    oss_file_path: ./configs/data/oss_conf_example.yaml
+    video_size:
+    - 480
+    - 832
+    target_fps: 24
+    sample_frames: 121
+    batch_size: 1
+    mixbit_decode: true
+    downsample_type: dpid
+    use_audio_video_generation: true
+    target_audio_freq: 46080
+    use_audio_resample: true
+    ref_size: 640
+    shuffle_ref: false
+    group_shuffle_ref: false
+    ref_augment_crop_prob: 0
+    max_obj_refs: 3
+    use_image_ref: true
+    use_audio_ref: true
+    feature_cache_enabled: false
+  sampler:
+    batch_size: 1
+    num_workers: 1
+    iter_num: 100000
+    use_balance_sort: true
+    balance_bucket_batches: 10

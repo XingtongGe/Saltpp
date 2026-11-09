@@ -1,0 +1,35 @@
+# =============================================================================
+# Stage 2 (Step 2 Variant): Mixed-Step Rollout DMD + Shortcut Consistency
+# =============================================================================
+# Entrypoint: ltx_distillation.train_distillation
+# Launch:     bash scripts/train_stage2_rollout_dmd.sh configs/stage2_context_aligned_dmd/step2_rollout_salt_mixed_step.yaml
+# =============================================================================
+
+base_config_path: step2_rollout_base.yaml
+
+generator_ckpt: ./outputs/stage2_step1_clean_prefix_ar_dmd/model.pt
+generator_checkpoint_state_key: generator
+
+real_score_init_checkpoint: null
+real_score_init_state_key: null
+fake_score_init_checkpoint: null
+fake_score_init_state_key: null
+real_task_type: bidirectional_av
+fake_task_type: bidirectional_av
+real_score_use_causal_wrapper: false
+fake_score_use_causal_wrapper: false
+distillation_loss: sc_dmd
+
+mixed_denoising_step_lists:
+  - [1000, 982, 960, 930, 889, 828, 727, 533, 0]
+  - [1000, 960, 889, 727, 0]
+  - [1000, 889, 0]
+mixed_step_probs: [0.4, 0.4, 0.2]
+
+shortcut_consistency_weight: 0.1
+shortcut_consistency_apply_steps: [8]
+shortcut_num_segments: 2
+shortcut_time_weight: one_minus_sigma
+
+output_path: ./outputs/stage2_step2_rollout_salt_mixed_step
+wandb_name: stage2_step2_rollout_salt_mixed_step

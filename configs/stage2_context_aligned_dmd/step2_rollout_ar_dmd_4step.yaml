@@ -1,0 +1,31 @@
+# =============================================================================
+# Stage 2 (Step 2 Main Route): Context-Aligned AR DMD under Generated Rollout
+# =============================================================================
+# Initializes from Stage 2 Step 1 (Clean-Prefix AR-real/AR-fake DMD, step 3200)
+# and continues with matched causal AR real/fake scores on self-forcing rollouts.
+#
+# Entrypoint: ltx_distillation.train_distillation
+# Launch:     bash scripts/train_stage2_rollout_dmd.sh configs/stage2_context_aligned_dmd/step2_rollout_ar_dmd_4step.yaml
+# =============================================================================
+
+base_config_path: step2_rollout_base.yaml
+
+generator_ckpt: ./outputs/stage2_step1_clean_prefix_ar_dmd/model.pt
+generator_checkpoint_state_key: generator
+real_score_init_checkpoint: ./outputs/stage1_csf_ar_teacher_480p/model.pt
+real_score_init_state_key: generator
+fake_score_init_checkpoint: ./outputs/stage2_step1_clean_prefix_ar_dmd/model.pt
+fake_score_init_state_key: fake_score
+
+real_task_type: causal_av
+fake_task_type: causal_av
+real_score_use_causal_wrapper: true
+fake_score_use_causal_wrapper: true
+distillation_loss: self_context_ar_dmd
+
+real_audio_guidance_scale: 2.25
+real_audio_guidance_scale_min: 1.0
+real_audio_guidance_scale_max: 3.5
+
+output_path: ./outputs/stage2_step2_rollout_ar_dmd_4step
+wandb_name: stage2_step2_rollout_ar_dmd_4step
